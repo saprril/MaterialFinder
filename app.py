@@ -14,7 +14,7 @@ client = genai.Client(api_key=api_key)
 
 st.set_page_config(page_title="SAP Smart Material Search", page_icon="🔍")
 
-st.title("🔍 SAP Smart Material Search (MM60 Excel)")
+st.title("SAP Smart Material Search")
 st.caption("Cari kode material SAP (MATNR) dari file Excel hasil export T-Code MM60.")
 
 # Upload File Excel Master Data MM60
@@ -85,7 +85,7 @@ if uploaded_file is not None:
                                 st.caption(f"Relevansi: {item['confidence']}")
                             with col2:
                                 st.subheader(item['maktx'])
-                                st.write(f"💡 *{item['reason']}*")
+                                st.write(f"Alasan: *{item['reason']}*")
                 except Exception as e:
                     st.error(f"Gagal memproses AI: {e}")
 
