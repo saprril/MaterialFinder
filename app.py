@@ -14,67 +14,82 @@ client = genai.Client(api_key=api_key)
 
 st.set_page_config(page_title="SAP Smart Material Search", page_icon="🔍")
 
-st.title("🔍 SAP Smart Material Search (MM/SD)")
-st.caption("Cari kode material SAP (MATNR) dari file CSV Master Data menggunakan AI.")
+st.title("🔍 SAP Smart Material Search (MM60 Excel)")
+st.caption("Cari kode material SAP (MATNR) dari file Excel hasil export T-Code MM60.")
 
-# Upload File CSV Master Data
-uploaded_file = st.file_uploader("Upload File Master Data SAP (.csv)", type=["csv"])
+# Upload File Excel Master Data MM60
+uploaded_file = st.file_uploader(
+    "Upload File Excel Export MM60 (.xlsx / .xls)", 
+    type=["xlsx", "xls"]
+)
 
 if uploaded_file is not None:
-    df_master = pd.read_csv(uploaded_file)
-    st.success(f"Berhasil memuat {len(df_master)} data material!")
-    
-    with st.expander("Preview Data Master SAP"):
-        st.dataframe(df_master.head(5))
+    try:
+        # Membaca file Excel
+        # converters={'Material': str} memastikan leading zero (misal 00000010002) tidak hilang
+        df_master = pd.read_excel(uploaded_file, dtype=str)
+        
+        # Bersihkan spasi berlebih di nama kolom
+        df_master.columns = df_master.columns.str.strip()
 
-    query_user = st.text_input("Ketik deskripsi barang yang dicari:", placeholder="misal: baut besi ukuran 8mm")
+        st.success(f"Berhasil memuat {len(df_master)} data material dari Excel!")
+        
+        with st.expander("Preview Data"):
+            st.dataframe(df_master.head(5))
 
-    if query_user:
-        with st.spinner("AI sedang menganalisis & mencocokkan data..."):
-            catalog_text = df_master.head(100).to_string(index=False)
+        query_user = st.text_input("Ketik deskripsi barang yang dicari:", placeholder="misal: asam klorida")
 
-            prompt = f"""
-            Kamu adalah sistem pencarian cerdas untuk SAP Master Data (Module MM/SD).
-            Berikut adalah Katalog Master Data SAP yang di-upload:
-            {catalog_text}
+        if query_user:
+            with st.spinner("AI sedang menganalisis & mencocokkan data..."):
+                # Mengambil 100 baris pertama untuk efisiensi context window
+                catalog_data = df_master.head(100).to_dict(orient='records')
+                catalog_text = json.dumps(catalog_data, ensure_ascii=False)
 
-            User mencari barang dengan bahasa awam: "{query_user}"
+                prompt = f"""
+                Kamu adalah sistem pencarian cerdas untuk SAP Master Data (Module MM/SD).
+                Berikut adalah Katalog Master Data SAP hasil export MM60:
+                {catalog_text}
 
-            Tugasmu:
-            1. Analisis intent pencarian user.
-            2. Cari maksimal 3 barang dari katalog yang paling cocok/relevan.
-            3. Kembalikan hasilnya HANYA dalam format JSON array berisi object dengan key:
-               - "matnr": Kode Material SAP
-               - "maktx": Deskripsi Material di SAP
-               - "confidence": Persentase relevansi (contoh: "95%")
-               - "reason": Alasan singkat kenapa barang ini cocok
+                User mencari barang dengan bahasa awam: "{query_user}"
 
-            Contoh format JSON:
-            [
-              {{"matnr": "10002931", "maktx": "BT-BJ-M8-100", "confidence": "90%", "reason": "M8 sesuai dengan ukuran 8mm"}}
-            ]
-            """
+                Tugasmu:
+                1. Analisis intent pencarian user.
+                2. Cari maksimal 3 barang dari katalog yang paling cocok/relevan (perhatikan kolom Material dan Material Description).
+                3. Kembalikan hasilnya HANYA dalam format JSON array berisi object dengan key:
+                   - "matnr": Kode Material SAP
+                   - "maktx": Deskripsi Material di SAP
+                   - "confidence": Persentase relevansi (contoh: "95%")
+                   - "reason": Alasan singkat kenapa barang ini cocok
 
-            try:
-                response = client.models.generate_content(
-                    model='gemini-3.6-flash',
-                    contents=prompt,
-                )
+                Contoh format JSON:
+                [
+                  {{"matnr": "10002931", "maktx": "BT-BJ-M8-100", "confidence": "90%", "reason": "M8 sesuai dengan ukuran 8mm"}}
+                ]
+                """
 
-                clean_json = response.text.replace("```json", "").replace("```", "").strip()
-                results = json.loads(clean_json)
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-3.6-flash',
+                        contents=prompt,
+                    )
 
-                st.subheader("Rekomendasi Kode Material SAP:")
-                for item in results:
-                    with st.container(border=True):
-                        col1, col2 = st.columns([1, 3])
-                        with col1:
-                            st.header(f"`{item['matnr']}`")
-                            st.caption(f"Relevansi: {item['confidence']}")
-                        with col2:
-                            st.subheader(item['maktx'])
-                            st.write(f"💡 *{item['reason']}*")
-            except Exception as e:
-                st.error(f"Gagal memproses AI: {e}")
+                    clean_json = response.text.replace("```json", "").replace("```", "").strip()
+                    results = json.loads(clean_json)
+
+                    st.subheader("Rekomendasi Kode Material SAP:")
+                    for item in results:
+                        with st.container(border=True):
+                            col1, col2 = st.columns([1, 3])
+                            with col1:
+                                st.header(f"`{item['matnr']}`")
+                                st.caption(f"Relevansi: {item['confidence']}")
+                            with col2:
+                                st.subheader(item['maktx'])
+                                st.write(f"💡 *{item['reason']}*")
+                except Exception as e:
+                    st.error(f"Gagal memproses AI: {e}")
+
+    except Exception as e:
+        st.error(f"Gagal membaca file Excel: {e}")
 else:
-    st.info("Silakan upload file CSV Master Data SAP kamu terlebih dahulu untuk mulai mencari.")
+    st.info("Silakan upload file Excel (.xlsx / .xls) hasil export MM60 kamu terlebih dahulu.")
