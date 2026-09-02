@@ -69,7 +69,7 @@ if uploaded_file is not None:
 
                 try:
                     response = client.models.generate_content(
-                        model='gemini-3.6-flash-lite',
+                        model=st.secrets.get("GEMINI_MODEL"),
                         contents=prompt,
                     )
 
